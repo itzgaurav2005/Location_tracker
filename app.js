@@ -1,40 +1,59 @@
 const express = require('express');
-const session = require('express-session'); // ✅ Import session
-const app = express();
+const session = require('express-session'); 
 const path = require('path');
 const http = require('http');
 const socketio = require('socket.io');
 
-app.use(express.static('public'));
-app.use('/css', express.static(__dirname + '/public/css'));
-app.use('/js', express.static(__dirname + '/public/js'));
-
-// ✅ Configure session (45 minutes)
-app.use(
-    session({
-        secret: "Gaurav@157",  // 🔒 Replace with a strong secret
-        resave: false,
-        saveUninitialized: true,
-        cookie: { maxAge: 45 * 60 * 1000 } // ⏳ 45 minutes
-    })
-);
-
+const app = express();
 const server = http.createServer(app);
 const io = socketio(server);
 
-io.on("connection", function(socket) {
-    socket.on("send-location", function(data) {
-        if (socket.handshake.session) {
-            io.emit("receive-location", { id: socket.id, ...data });
-        }
-    });
-    console.log("User connected:", socket.id);
+// ✅ Configure session (45 minutes)
+const sessionMiddleware = session({
+    secret: "Gaurav@157",  
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 45 * 60 * 1000 } 
 });
 
+app.use(sessionMiddleware);
+
+// ✅ Attach session to Socket.IO
+io.use((socket, next) => {
+    sessionMiddleware(socket.request, {}, next);
+});
+
+// ✅ Static files
+app.use(express.static('public'));
+
+// ✅ Ensure correct static paths
+app.use('/css', express.static(__dirname + '/public/css'));
+app.use('/js', express.static(__dirname + '/public/js'));
+
+// ✅ Set EJS for rendering views
+app.set('views', path.join(__dirname, 'views')); 
 app.set('view engine', 'ejs');
+
+// ✅ Socket.io connection
+io.on("connection", function(socket) {
+    console.log("User connected:", socket.id);
+
+    socket.on("send-location", function(data) {
+        console.log("Received location from:", socket.id, data);
+        io.emit("receive-location", { id: socket.id, ...data });
+    });
+
+    socket.on("disconnect", function() {
+        console.log("User disconnected:", socket.id);
+    });
+});
+
+// ✅ Route to render the map
 app.get("/", function (req, res) {
-    req.session.startTime = Date.now(); // ✅ Store session start time
+    req.session.startTime = Date.now();
     res.render("index");
 });
 
-server.listen(3000, () => console.log("Server started at port: 3000"));
+// ✅ Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
