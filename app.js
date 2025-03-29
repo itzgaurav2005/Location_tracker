@@ -1,63 +1,40 @@
 const express = require('express');
-const session = require('express-session');  // ✅ Import session
+const session = require('express-session'); // ✅ Import session
 const app = express();
 const path = require('path');
-
 const http = require('http');
-const server = http.createServer(app);
-
 const socketio = require('socket.io');
+
+app.use(express.static('public'));
+app.use('/css', express.static(__dirname + '/public/css'));
+app.use('/js', express.static(__dirname + '/public/js'));
+
+// ✅ Configure session (45 minutes)
+app.use(
+    session({
+        secret: "Gaurav@157",  // 🔒 Replace with a strong secret
+        resave: false,
+        saveUninitialized: true,
+        cookie: { maxAge: 45 * 60 * 1000 } // ⏳ 45 minutes
+    })
+);
+
+const server = http.createServer(app);
 const io = socketio(server);
 
-// ✅ Set up session middleware
-app.use(session({
-    secret: 'your_secret_key',  // Change this to a strong secret
-    resave: false,
-    saveUninitialized: true,
-    cookie: { maxAge: 30 * 60 * 1000 } // ✅ Session expires after 30 minutes
-}));
-
-// ✅ Set view engine
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
-// ✅ Serve static files
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
-app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
-
-// ✅ Socket.io connection handling with session check
-io.on("connection", (socket) => {
-    const sessionID = socket.handshake.headers.cookie;
-
-    if (!sessionID) {
-        console.log("Session expired. Blocking location tracking.");
-        socket.disconnect();  // ❌ Disconnect if session expired
-        return;
-    }
-
-    socket.on("send-location", (data) => {
-        io.emit("receive-location", { id: socket.id, ...data });
+io.on("connection", function(socket) {
+    socket.on("send-location", function(data) {
+        if (socket.handshake.session) {
+            io.emit("receive-location", { id: socket.id, ...data });
+        }
     });
-
-    console.log("Connected:", socket.id);
+    console.log("User connected:", socket.id);
 });
 
-// ✅ Home route
-app.get("/", (req, res) => {
-    if (!req.session.startTime) {
-        req.session.startTime = Date.now();  // Set session start time
-    }
-
-    // ✅ Check if session exceeded 30 minutes
-    if (Date.now() - req.session.startTime > 30 * 60 * 1000) {
-        req.session.destroy();  // ❌ End session after 30 minutes
-        return res.send("Session expired. Refresh the page to restart.");
-    }
-
+app.set('view engine', 'ejs');
+app.get("/", function (req, res) {
+    req.session.startTime = Date.now(); // ✅ Store session start time
     res.render("index");
 });
 
-// ✅ Start server
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`Server started on port: ${PORT}`));
+server.listen(3000, () => console.log("Server started at port: 3000"));

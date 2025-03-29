@@ -1,31 +1,27 @@
 const socket = io();
-let trackingActive = true;
-
-// Check session expiry from backend
-socket.on("session-expired", () => {
-    alert("Session expired. Location tracking stopped.");
-    trackingActive = false;
-});
+const sessionDuration = 45 * 60 * 1000; // ⏳ 45 minutes
+const sessionStartTime = Date.now();
 
 if (navigator.geolocation) {
-    const stopTrackingTime = Date.now() + 30 * 60 * 1000; // 30 minutes from now
-
-    const trackLocation = () => {
-        if (!trackingActive || Date.now() > stopTrackingTime) {
-            console.log("Tracking stopped after 30 minutes.");
-            return;
-        }
-        navigator.geolocation.watchPosition((position) => {
+    const watchId = navigator.geolocation.watchPosition(
+        (position) => {
             const { latitude, longitude } = position.coords;
+            if (Date.now() - sessionStartTime > sessionDuration) {
+                navigator.geolocation.clearWatch(watchId);
+                alert("Session expired! Location tracking has stopped.");
+                return;
+            }
             socket.emit("send-location", { latitude, longitude });
-        }, (error) => {
-            console.error(error);
-        }, {
+        },
+        (error) => {
+            console.error("Geolocation Error:", error.message);
+        },
+        {
             enableHighAccuracy: true,
-            maximumAge: 0,
-            timeout: 5000
-        });
-    };
-
-    setInterval(trackLocation, 5000); // Update location every 5 seconds
+            timeout: 15000,
+            maximumAge: 5000
+        }
+    );
+} else {
+    alert("Geolocation is not supported by this browser.");
 }
