@@ -1,40 +1,37 @@
 const express = require('express');
+const session = require('express-session');
 const app = express();
-const path = require('path');
 const http = require('http');
-
 const socketio = require('socket.io');
+
 const server = http.createServer(app);
 const io = socketio(server);
 
-// Serve static files from "public"
-app.use(express.static('public'));
+// Session Middleware
+app.use(session({
+    secret: 'your_secret_key',  // Change this to a strong secret key
+    resave: false,
+    saveUninitialized: true,
+    cookie: { maxAge: 30 * 60 * 1000 }  // 30 minutes session
+}));
 
-// Ensure EJS is set correctly
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
-
-// Handle Socket.IO connections
 io.on("connection", function(socket) {
-    console.log("A user connected:", socket.id);
+    const sessionID = socket.handshake.headers.cookie;
 
     socket.on("send-location", function(data) {
+        if (!sessionID) {
+            socket.emit("session-expired"); // Notify frontend to stop tracking
+            return;
+        }
         io.emit("receive-location", { id: socket.id, ...data });
     });
 
-    socket.on("disconnect", function() {
-        console.log("User disconnected:", socket.id);
-    });
-
-    socket.on("disconnect", function(){
-        io.emit("user-disconnected", socket.id)
-    })
+    console.log("User connected:", socket.id);
 });
 
-// Route to render EJS template
-app.get("/", function (req, res) {
+app.get("/", function(req, res) {
+    req.session.startTime = Date.now();  // Set session start time
     res.render("index");
 });
 
-// Start server
 server.listen(3000, () => console.log("Server started at port: 3000"));

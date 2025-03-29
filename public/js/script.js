@@ -1,53 +1,31 @@
 const socket = io();
+let trackingActive = true;
 
-socket.on("connect", () => {
-    console.log("Socket connected:", socket.id);
+// Check session expiry from backend
+socket.on("session-expired", () => {
+    alert("Session expired. Location tracking stopped.");
+    trackingActive = false;
 });
 
 if (navigator.geolocation) {
-    navigator.geolocation.watchPosition(
-        (position) => {
+    const stopTrackingTime = Date.now() + 30 * 60 * 1000; // 30 minutes from now
+
+    const trackLocation = () => {
+        if (!trackingActive || Date.now() > stopTrackingTime) {
+            console.log("Tracking stopped after 30 minutes.");
+            return;
+        }
+        navigator.geolocation.watchPosition((position) => {
             const { latitude, longitude } = position.coords;
-            console.log("Sending location:", latitude, longitude);
             socket.emit("send-location", { latitude, longitude });
-        },
-        (error) => {
-            console.error("Geolocation error:", error);
-        },
-        {
+        }, (error) => {
+            console.error(error);
+        }, {
             enableHighAccuracy: true,
             maximumAge: 0,
-            timeout: 5000,
-        }
-    );
-} else {
-    console.error("Geolocation is not supported by this browser.");
+            timeout: 5000
+        });
+    };
+
+    setInterval(trackLocation, 5000); // Update location every 5 seconds
 }
-
-const map = L.map("map").setView([0, 0], 10);
-
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    attribution: "Vindhya Travels Map",
-}).addTo(map);
-
-const markers = {}; // Store markers for each user
-
-socket.on("receive-location", (data) => {
-    const { id, latitude, longitude } = data;
-    console.log("Received location for:", id, latitude, longitude);
-
-    map.setView([latitude, longitude]);
-
-    if (markers[id]) {
-        markers[id].setLatLng([latitude, longitude]);
-    } else {
-        markers[id] = L.marker([latitude, longitude]).addTo(map);
-    }
-});
-
-socket.on("user-disconnected", (id)=>{
-    if(markers[id]){
-        map.removeLayer(markers[id])
-        delete markers[id]
-    }
-})
